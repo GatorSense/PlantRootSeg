@@ -2,7 +2,7 @@
 
 _Weihuang Xu, Guohao Yu, Alina Zare, Brendan Zurweller, Diane Rowland,Joel Reyes-Cabrera, Felix B Fritschi, Roser Matamala, Thomas E. Juenger_
 
-If you reference the results, cite it: Weihuang Xu, Guohao Yu, Alina Zare, Brendan Zurweller, Diane Rowland,Joel Reyes-Cabrera, Felix B Fritschi, Roser Matamala & Thomas E. Juenger. (2019, Sept.). GatorSense/PlantRootSeg: Initial Release (Version v1.0). 
+If you refer the results, cite it: Weihuang Xu, Guohao Yu, Alina Zare, Brendan Zurweller, Diane Rowland,Joel Reyes-Cabrera, Felix B Fritschi, Roser Matamala & Thomas E. Juenger. (2019, Sept.). GatorSense/PlantRootSeg: Initial Release (Version v1.0). 
 
 [[`arXiv`](https://arxiv.org/pdf/1903.09344.pdf)] [[`BibTeX`](#CitingRootSeg)]
 
