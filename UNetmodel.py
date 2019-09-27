@@ -1,49 +1,24 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Sep 26 13:11:11 2019
+
+@author: wei
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
-from collections import OrderedDict
 from torch.nn import init
-import numpy as np
-
-def conv3x3(in_channels, out_channels, stride=1, 
-            padding=1, bias=True, groups=1):    
-    return nn.Conv2d(
-        in_channels,
-        out_channels,
-        kernel_size=3,
-        stride=stride,
-        padding=padding,
-        bias=bias,
-        groups=groups)
-
-def upconv2x2(in_channels, out_channels, mode='transpose'):
-    if mode == 'transpose':
-        return nn.ConvTranspose2d(
-            in_channels,
-            out_channels,
-            kernel_size=2,
-            stride=2)
-    else:
-        # out_channels is always going to be the same
-        # as in_channels
-        return nn.Sequential(
-            nn.Upsample(mode='bilinear', scale_factor=2),
-            conv1x1(in_channels, out_channels))
-
-def conv1x1(in_channels, out_channels, groups=1):
-    return nn.Conv2d(
-        in_channels,
-        out_channels,
-        kernel_size=1,
-        groups=groups,
-        stride=1)
-
 
 class DownConv(nn.Module):
     """
-    A helper Module that performs 2 convolutions and 1 MaxPool.
-    A ReLU activation follows each convolution.
+    Encoder block has 2 convolution layers and 1 maxpooling layer.
+    Encoder block will extract features and down-sample the feature maps.
+    Note: if the length and width of feature map is odd number, then add 
+    padding in maxpooling layer so that the size of feature maps is matching 
+    in decoder.
+    
     """
     def __init__(self, in_channels, out_channels, pooling=True):
         super(DownConv, self).__init__()
@@ -51,125 +26,77 @@ class DownConv(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.pooling = pooling
-
-        self.conv1 = conv3x3(self.in_channels, self.out_channels)
-        self.conv2 = conv3x3(self.out_channels, self.out_channels)
+        
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
-        before_pool = x
+        feature_map = x
 
-        #if the length and width of feature map is odd number, then add padding
-        #in maxpooling layer so that the feature map can have same size in decoder
         if self.pooling:
             if x.size()[2]%2 == 1 or x.size()[3]%2 == 1:
                 x = F.max_pool2d(x, kernel_size=2, stride=2, padding=1)
             else:
                 x = F.max_pool2d(x, kernel_size=2, stride=2, padding=0)
-        return x, before_pool
-
+        return x, feature_map
 
 class UpConv(nn.Module):
     """
-    A helper Module that performs 2 convolutions and 1 UpConvolution.
-    A ReLU activation follows each convolution.
+    Decoder block has 1 transpose convolution layer and 2 convolution layers.
+    Decoder block will up-sample feature maps.
+    Skip-connection is performed by concatenating feature maps from encoder to 
+    coresponding decoder.
+
     """
-    def __init__(self, in_channels, out_channels, 
-                 merge_mode='concat', up_mode='transpose'):
+    def __init__(self, in_channels, out_channels):
         super(UpConv, self).__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.merge_mode = merge_mode
-        self.up_mode = up_mode
 
-        self.upconv = upconv2x2(self.in_channels, self.out_channels, 
-            mode=self.up_mode)
-
-        if self.merge_mode == 'concat':
-            self.conv1 = conv3x3(
-                2*self.out_channels, self.out_channels)
-        else:
-            # num of input channels to conv2 is same
-            self.conv1 = conv3x3(self.out_channels, self.out_channels)
-        self.conv2 = conv3x3(self.out_channels, self.out_channels)
+        self.upconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+        self.conv1 = nn.Conv2d(2*self.out_channels, self.out_channels, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(self.out_channels, self.out_channels, kernel_size=3, padding=1)
 
 
-    def forward(self, from_down, from_up):
-        """ Forward pass
-        Arguments:
-            from_down: tensor from the encoder pathway
-            from_up: upconv'd tensor from the decoder pathway
+    def forward(self, down_maps, up_maps):
+        """ 
+        Parameters:
+            down_maps: feature maps extracted from the corsponding encoder block
+            up_maps: feature maps generated in the decoder block
         """
-        #import pdb; pdb.set_trace()
-        from_up = self.upconv(from_up)
-        if self.merge_mode == 'concat':
-            #crop the up image size to be the same as feature in encoder if the
-            #size of feature is odd number
-            x = torch.cat((from_up[:,:,:from_down.size()[2],:from_down.size()[3]], from_down), 1)
-        else:
-            x = from_up + from_down
+        
+        up_maps = self.upconv(up_maps)
+
+        #crop the up image size to be the same as feature in encoder if the
+        #size of feature is odd number
+        x = torch.cat((up_maps[:,:,:down_maps.size()[2],:down_maps.size()[3]], down_maps), 1)
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         return x
-
+    
 
 class UNet(nn.Module):
-    """ `UNet` implementation is based on https://arxiv.org/abs/1505.04597
-
+    """ 
+    UNet implementation is based on https://arxiv.org/abs/1505.04597 and adapted
+    from https://github.com/jaxony/unet-pytorch.
+    
     Modifications to the original paper:
-    (1) padding is used in 3x3 convolutions to prevent loss
-        of border pixels
-    (2) merging outputs does not require cropping due to (1)
-    (3) residual connections can be used by specifying
-        UNet(merge_mode='add')
-    (4) if non-parametric upsampling is used in the decoder
-        pathway (specified by upmode='upsample'), then an
-        additional 1x1 2d convolution occurs after upsampling
-        to reduce channel dimensionality by a factor of 2.
-        This channel halving happens with the convolution in
-        the tranpose convolution (specified by upmode='transpose')
+    (1) To keep the spacial dimension, padding is used in all convolution layers
+    (2) Skip connectiong works for any size of feature maps 
     """
 
-    def __init__(self, num_classes, in_channels=3, depth=5, 
-                 start_filts=64, up_mode='transpose', 
-                 merge_mode='concat'):
+    def __init__(self, num_classes, in_channels=3, depth=5, start_filts=64):
         """
         Arguments:
-            in_channels: int, number of channels in the input tensor.
-                Default is 3 for RGB images.
-            depth: int, number of MaxPools in the U-Net.
-            start_filts: int, number of convolutional filters for the 
-                first conv.
-            up_mode: string, type of upconvolution. Choices: 'transpose'
-                for transpose convolution or 'upsample' for nearest neighbour
-                upsampling.
+            in_channels: int, number of channels in the input tensor. If input
+            is RGB image, the channel is 3.
+            depth: int, number of decoders in the network
+            start_filts: int, number of convolutional filters in the first encoder block.
         """
         super(UNet, self).__init__()
-
-        if up_mode in ('transpose', 'upsample'):
-            self.up_mode = up_mode
-        else:
-            raise ValueError("\"{}\" is not a valid mode for "
-                             "upsampling. Only \"transpose\" and "
-                             "\"upsample\" are allowed.".format(up_mode))
-    
-        if merge_mode in ('concat', 'add'):
-            self.merge_mode = merge_mode
-        else:
-            raise ValueError("\"{}\" is not a valid mode for"
-                             "merging up and down paths. "
-                             "Only \"concat\" and "
-                             "\"add\" are allowed.".format(up_mode))
-
-        # NOTE: up_mode 'upsample' is incompatible with merge_mode 'add'
-        if self.up_mode == 'upsample' and self.merge_mode == 'add':
-            raise ValueError("up_mode \"upsample\" is incompatible "
-                             "with merge_mode \"add\" at the moment "
-                             "because it doesn't make sense to use "
-                             "nearest neighbour to reduce "
-                             "depth channels (by half).")
 
         self.num_classes = num_classes
         self.in_channels = in_channels
@@ -179,27 +106,27 @@ class UNet(nn.Module):
         self.down_convs = []
         self.up_convs = []
 
-        # create the encoder pathway and add to a list
+        # Create a encoder block list saving all the encoder operations
         for i in range(depth):
-            ins = self.in_channels if i == 0 else outs
-            outs = self.start_filts*(2**i)
+            if i == 0:
+                temp_in_channels = self.in_channels
+            else:
+                 temp_in_channels = temp_out_channels   
+            temp_out_channels = self.start_filts*(2**i)
             pooling = True if i < depth-1 else False
-
-            down_conv = DownConv(ins, outs, pooling=pooling)
-            self.down_convs.append(down_conv)
+            encoder_block = DownConv(temp_in_channels, temp_out_channels, pooling=pooling)
+            self.down_convs.append(encoder_block)
   
-        # create the decoder pathway and add to a list
-        # - careful! decoding only requires depth-1 blocks
-        for i in range(depth-1):
-            ins = outs
-            outs = ins // 2
-            up_conv = UpConv(ins, outs, up_mode=up_mode,
-                merge_mode=merge_mode)
-            self.up_convs.append(up_conv)
+        # Create a dncoder block list saving all the dncoder operations
+        # Decoder path has depth-1 blocks (one less than encoder path)
+        for k in range(depth-1):
+            temp_in_channels = temp_out_channels
+            temp_out_channels = temp_in_channels // 2
+            decoder_block = UpConv(temp_in_channels, temp_out_channels)
+            self.up_convs.append(decoder_block)
 
-        self.conv_final = conv1x1(outs, self.num_classes)
+        self.conv_final = nn.Conv2d(temp_out_channels, self.num_classes, kernel_size=1)
 
-        # add the list of modules to current module
         self.down_convs = nn.ModuleList(self.down_convs)
         self.up_convs = nn.ModuleList(self.up_convs)
 
@@ -221,27 +148,15 @@ class UNet(nn.Module):
         encoder_outs = []
         # encoder pathway, save outputs for merging
         for i, module in enumerate(self.down_convs):
-            x, before_pool = module(x)
-            encoder_outs.append(before_pool)
+            x, feature_map = module(x)
+            encoder_outs.append(feature_map)
 
         for i, module in enumerate(self.up_convs):
             before_pool = encoder_outs[-(i+2)]
             x = module(before_pool, x)
         
-        # No softmax is used. This means you need to use
-        # nn.CrossEntropyLoss is your training script,
-        # as this module includes a softmax already.
-        
         x = self.conv_final(x)
         
-        return x
+        return x   
 
-if __name__ == "__main__":
-    """
-    testing
-    """
-    model = UNet(3, depth=5, merge_mode='concat')
-    x = Variable(torch.FloatTensor(np.random.random((1, 3, 552, 736))))
-    out = model(x)
-    loss = torch.sum(out)
-    loss.backward()
+
