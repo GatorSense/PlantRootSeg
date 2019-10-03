@@ -10,6 +10,11 @@ In this repository, we provide the Jupyter Notebook demo to show the results pre
 
 ## Demo
 For running a demo, after forking the repository, open the RootShow.ipynb in Jupyter Nootbook.
+Note: Since pre-trained models are large files. Please install [[`Git LFS`](https://git-lfs.github.com)] and clone repository with the command:
+
+```bash
+git lfs clone git@github.com:GatorSense/PlantRootSeg.git
+```
 
 ## License
 
