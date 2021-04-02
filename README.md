@@ -26,10 +26,13 @@ This product is Copyright (c) 2019 W. Xu and A. Zare. All rights reserved.
 
 Please cite the following reference using the following BibTeX entries.
 ```
-@article{xu2019overcoming,
-  title={Overcoming Small Minirhizotron Datasets Using Transfer Learning},
-  author={Xu, Weihuang and Yu, Guohao and Zare, Alina and Zurweller, Brendan and Rowland, Diane and Reyes-Cabrera, Joel and Fritschi, Felix B and Matamala, Roser and Juenger, Thomas E},
-  journal={under review},
-  year={2019}
+@article{xu2020overcoming,
+  title={Overcoming small minirhizotron datasets using transfer learning},
+  author={Xu, Weihuang and Yu, Guohao and Zare, Alina and Zurweller, Brendan and Rowland, Diane L and Reyes-Cabrera, Joel and Fritschi, Felix B and Matamala, Roser and Juenger, Thomas E},
+  journal={Computers and Electronics in Agriculture},
+  volume={175},
+  pages={105466},
+  year={2020},
+  publisher={Elsevier}
 }
 ```
