@@ -36,3 +36,7 @@ Please cite the following reference using the following BibTeX entries.
   publisher={Elsevier}
 }
 ```
+## Train on your data
+
+To finetune this model on your data, first select and initial model (e.g., from the Models folder).  Update data paths to your test imagery and annotation masks.  Our code is assuming XXX image types.  Apply any necessary preprocessing to your imagery (e.g., resize to be consistent in size, normalize imagery, etc).  Adjust parameters as necessary (e.g., epochs, segmentation threshold, etc). 
+
